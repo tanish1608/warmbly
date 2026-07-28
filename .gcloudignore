@@ -1,0 +1,17 @@
+# Keep the Cloud Build upload small. .git is excluded, so 04-build.sh resolves
+# the tag before submitting.
+.git
+.gitignore
+node_modules
+**/node_modules
+web/dist
+admin/dist
+site/dist
+docs/out
+docs/.next
+tracking/target
+realtime/_build
+realtime/deps
+ios
+.astro
+deploy/gcp/.last-tag

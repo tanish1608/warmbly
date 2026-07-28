@@ -1,0 +1,78 @@
+# Build all six Warmbly service images for linux/amd64 and push them to
+# Artifact Registry. Run via deploy/gcp/04-build.sh, which supplies _IMAGE_BASE
+# and _TAG. Every step is independent, so they run concurrently.
+substitutions:
+  _IMAGE_BASE: ""
+  _TAG: "latest"
+
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 3600s
+
+steps:
+  - id: backend
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    waitFor: ["-"]
+    args: ["build", "-f", "deploy/docker/backend.Dockerfile",
+           "-t", "${_IMAGE_BASE}/backend:${_TAG}", "-t", "${_IMAGE_BASE}/backend:latest", "."]
+
+  - id: consumer
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    waitFor: ["-"]
+    args: ["build", "-f", "deploy/docker/consumer.Dockerfile",
+           "-t", "${_IMAGE_BASE}/consumer:${_TAG}", "-t", "${_IMAGE_BASE}/consumer:latest", "."]
+
+  - id: worker
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    waitFor: ["-"]
+    args: ["build", "-f", "deploy/docker/worker.Dockerfile",
+           "-t", "${_IMAGE_BASE}/worker:${_TAG}", "-t", "${_IMAGE_BASE}/worker:latest", "."]
+
+  - id: tracking
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    waitFor: ["-"]
+    args: ["build", "-f", "tracking/Dockerfile",
+           "-t", "${_IMAGE_BASE}/tracking:${_TAG}", "-t", "${_IMAGE_BASE}/tracking:latest", "tracking"]
+
+  - id: realtime
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    waitFor: ["-"]
+    args: ["build", "-f", "deploy/docker/realtime.Dockerfile",
+           "-t", "${_IMAGE_BASE}/realtime:${_TAG}", "-t", "${_IMAGE_BASE}/realtime:latest", "."]
+
+  - id: web
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    waitFor: ["-"]
+    args: ["build", "-f", "web/Dockerfile",
+           "-t", "${_IMAGE_BASE}/web:${_TAG}", "-t", "${_IMAGE_BASE}/web:latest", "web"]
+
+  - id: admin
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    waitFor: ["-"]
+    args: ["build", "-f", "admin/Dockerfile",
+           "-t", "${_IMAGE_BASE}/admin:${_TAG}", "-t", "${_IMAGE_BASE}/admin:latest", "admin"]
+
+images:
+  - "${_IMAGE_BASE}/backend:${_TAG}"
+  - "${_IMAGE_BASE}/backend:latest"
+  - "${_IMAGE_BASE}/consumer:${_TAG}"
+  - "${_IMAGE_BASE}/consumer:latest"
+  - "${_IMAGE_BASE}/worker:${_TAG}"
+  - "${_IMAGE_BASE}/worker:latest"
+  - "${_IMAGE_BASE}/tracking:${_TAG}"
+  - "${_IMAGE_BASE}/tracking:latest"
+  - "${_IMAGE_BASE}/realtime:${_TAG}"
+  - "${_IMAGE_BASE}/realtime:latest"
+  - "${_IMAGE_BASE}/web:${_TAG}"
+  - "${_IMAGE_BASE}/web:latest"
+  - "${_IMAGE_BASE}/admin:${_TAG}"
+  - "${_IMAGE_BASE}/admin:latest"

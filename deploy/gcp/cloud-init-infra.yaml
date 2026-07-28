@@ -1,0 +1,53 @@
+#cloud-config
+# Container-Optimized OS: Redis and NATS JetStream as systemd-managed containers.
+# Both bind to the VM's internal IP only; the warmbly-allow-internal-infra
+# firewall rule is what lets Cloud Run reach them, and nothing is public.
+
+write_files:
+  - path: /etc/systemd/system/redis.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Redis
+      After=docker.service
+      Requires=docker.service
+
+      [Service]
+      Restart=always
+      RestartSec=5
+      ExecStartPre=-/usr/bin/docker rm -f redis
+      ExecStart=/usr/bin/docker run --rm --name redis \
+        -p 6379:6379 \
+        -v /var/lib/warmbly/redis:/data \
+        redis:7-alpine redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+      ExecStop=/usr/bin/docker stop redis
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/nats.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=NATS JetStream
+      After=docker.service
+      Requires=docker.service
+
+      [Service]
+      Restart=always
+      RestartSec=5
+      ExecStartPre=-/usr/bin/docker rm -f nats
+      ExecStart=/usr/bin/docker run --rm --name nats \
+        -p 4222:4222 -p 8222:8222 \
+        -v /var/lib/warmbly/nats:/data \
+        nats:2.10-alpine -js -sd /data -m 8222
+      ExecStop=/usr/bin/docker stop nats
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - mkdir -p /var/lib/warmbly/redis /var/lib/warmbly/nats
+  - systemctl daemon-reload
+  - systemctl enable --now redis.service
+  - systemctl enable --now nats.service
