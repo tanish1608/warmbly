@@ -55,6 +55,18 @@ fi
 
 SEC() { echo "$1=warmbly-$2:latest"; }
 
+# The dashboard always renders the Turnstile widget, and an empty sitekey makes
+# it hang on "Verification timed out" so nobody can sign up or log in. The
+# backend runs CAPTCHA_PROVIDER=none and never validates the token, so
+# Cloudflare's always-passing test key is the correct value here. Override with
+# a real sitekey only alongside CAPTCHA_PROVIDER=turnstile + TURNSTILE_SECRET.
+TURNSTILE_SITE_KEY="${TURNSTILE_SITE_KEY:-1x00000000000000000000AA}"
+
+# Platform mail (signup confirmation, password reset, invites) goes to Mailpit on
+# the infra VM. With SMTP_HOST unset the mailer falls back to AWS SES and every
+# registration 500s on a DNS lookup for email.<region>.amazonaws.com. Point
+# SMTP_HOST/SMTP_PORT at a real relay when this stops being a single-tenant box.
+
 COMMON_SECRETS="$(SEC AUTH_SECRET auth-secret),$(SEC CREDENTIALS_ENCRYPTION_KEY credentials-encryption-key),$(SEC KMS_LOCAL_MASTER_KEY kms-local-master-key),$(SEC INTERNAL_API_TOKEN internal-api-token),$(SEC PRIMARY_DB primary-db),$(SEC AWS_ACCESS_KEY_ID gcs-hmac-key),$(SEC AWS_SECRET_ACCESS_KEY gcs-hmac-secret)"
 
 VPC="--network=default --subnet=default --vpc-egress=private-ranges-only"
@@ -124,6 +136,8 @@ TRACKING_DOMAIN=${TRACKING_HOST}
 BLOB_PUBLIC_BASE_URL=${BACKEND_URL}/public
 EMAIL_NAME=Warmbly
 EMAIL_ADDRESS=noreply@warmbly.local
+SMTP_HOST=${INFRA_IP}
+SMTP_PORT=1025
 GEODB_PATH=/app/data/GeoLite2-City.mmdb
 EOF
 } | envfile backend )" \
@@ -156,6 +170,7 @@ deploy web "$(cat <<EOF | envfile web
 WARMBLY_API_URL=${BACKEND_URL}
 WARMBLY_APP_URL=${WEB_URL}
 WARMBLY_TRACKING_DOMAIN=${TRACKING_HOST}
+WARMBLY_TURNSTILE_KEY=${TURNSTILE_SITE_KEY}
 EOF
 )" \
   --port=80 --cpu=1 --memory=256Mi --min-instances=0 --max-instances=3
@@ -165,6 +180,7 @@ deploy admin "$(cat <<EOF | envfile admin
 WARMBLY_API_URL=${BACKEND_URL}
 WARMBLY_DASHBOARD_URL=${WEB_URL}
 WARMBLY_ENV_LABEL=production
+WARMBLY_TURNSTILE_KEY=${TURNSTILE_SITE_KEY}
 EOF
 )" \
   --port=80 --cpu=1 --memory=256Mi --min-instances=0 --max-instances=3

@@ -46,8 +46,31 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
+  - path: /etc/systemd/system/mailpit.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Mailpit (platform notification mail sink)
+      After=docker.service
+      Requires=docker.service
+
+      [Service]
+      Restart=always
+      RestartSec=5
+      ExecStartPre=-/usr/bin/docker rm -f mailpit
+      ExecStart=/usr/bin/docker run --rm --name mailpit \
+        -p 1025:1025 -p 8025:8025 \
+        -v /var/lib/warmbly/mailpit:/data \
+        -e MP_DATABASE=/data/mailpit.db \
+        axllent/mailpit:latest
+      ExecStop=/usr/bin/docker stop mailpit
+
+      [Install]
+      WantedBy=multi-user.target
+
 runcmd:
-  - mkdir -p /var/lib/warmbly/redis /var/lib/warmbly/nats
+  - mkdir -p /var/lib/warmbly/redis /var/lib/warmbly/nats /var/lib/warmbly/mailpit
   - systemctl daemon-reload
   - systemctl enable --now redis.service
   - systemctl enable --now nats.service
+  - systemctl enable --now mailpit.service

@@ -43,9 +43,9 @@ echo "== firewall =="
 gc compute firewall-rules describe warmbly-allow-internal-infra >/dev/null 2>&1 \
   || gc compute firewall-rules create warmbly-allow-internal-infra \
        --network=default --direction=INGRESS --action=ALLOW \
-       --rules=tcp:6379,tcp:4222 --source-ranges=10.128.0.0/9 \
+       --rules=tcp:6379,tcp:4222,tcp:1025 --source-ranges=10.128.0.0/9 \
        --target-tags=warmbly-infra \
-       --description="Cloud Run -> Redis/NATS on the Warmbly infra VM"
+       --description="Cloud Run -> Redis/NATS/SMTP on the Warmbly infra VM"
 
 echo "== cloud sql (this takes ~10 minutes) =="
 if gc sql instances describe "$SQL_INSTANCE" >/dev/null 2>&1; then
