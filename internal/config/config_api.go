@@ -13,6 +13,12 @@ type ApiConfig struct {
 	Hostname string
 	GinMode  string
 
+	// PublicURL is the externally reachable base URL of the API, used to build
+	// OAuth redirect URIs. It is separate from Hostname because behind a proxy
+	// or on Cloud Run the listen address (0.0.0.0:8080) is not the public URL.
+	// Falls back to Hostname when unset.
+	PublicURL string
+
 	WebsocketURI   string
 	AllowedOrigins []string
 }
@@ -20,6 +26,10 @@ type ApiConfig struct {
 func (c *Config) LoadApiConfig(ctx context.Context) (*ApiConfig, error) {
 	// For API host, check env vars first with sensible defaults
 	hostName := c.GetStringOptional(ctx, "API_HOST", "api/host", "0.0.0.0:8080")
+	publicURL := strings.TrimRight(c.GetStringOptional(ctx, "PUBLIC_API_URL", "api/public_url", ""), "/")
+	if publicURL == "" {
+		publicURL = hostName
+	}
 
 	websocketUri, err := c.GetString(ctx, "WEBSOCKET_URL", "api/websocket_uri")
 	if err != nil {
@@ -60,6 +70,7 @@ func (c *Config) LoadApiConfig(ctx context.Context) (*ApiConfig, error) {
 
 	return &ApiConfig{
 		Hostname:       hostName,
+		PublicURL:      publicURL,
 		GinMode:        ginMode,
 		WebsocketURI:   websocketUri,
 		AllowedOrigins: allowedOrigins,

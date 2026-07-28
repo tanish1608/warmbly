@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -310,8 +312,12 @@ func main() {
 		var geoloc *geo.Client
 		geoloc, err = geo.New(geoPath)
 		if err != nil {
-			if cfg.Env == "dev" {
-				log.Printf("Warning: GeoIP database not found at %s, geo lookups disabled", geoPath)
+			// A GeoLite2 database is a licensed MaxMind download that no image
+			// ships, and geo lookups are optional enrichment, so an absent file
+			// must not stop the API from booting in any environment. A file that
+			// exists but is unreadable or corrupt still hard-fails outside dev.
+			if errors.Is(err, fs.ErrNotExist) || cfg.Env == "dev" {
+				log.Printf("Warning: GeoIP database not usable at %s (%v), geo lookups disabled", geoPath, err)
 				// geo.New returns a nil client on error; fall back to a usable,
 				// geo-disabled client so downstream callers never deref nil.
 				geoloc, _ = geo.New("")
@@ -933,7 +939,7 @@ func main() {
 
 		eventsPublisher := events.NewPublisher(bus, s3, codecImpl, cipherService)
 
-		oauth2Cfg := config.LoadOauth2(apiCfg.Hostname)
+		oauth2Cfg := config.LoadOauth2(apiCfg.PublicURL)
 		emailService = email.NewServiceWithWorker(
 			emailRepostory,
 			cipherService,
