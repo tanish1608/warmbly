@@ -6,6 +6,7 @@ import "context"
 //
 // Implementations:
 //   - AWS KMS         (kms.KMS — historical default)
+//   - Google Cloud KMS (kms.GCPProvider)
 //   - Local           (kms.LocalProvider — self-hostable, master key in env/file)
 //
 // The ciphertext blob format is opaque to the caller; only the provider that
@@ -28,6 +29,7 @@ type Provider interface {
 // Compile-time interface checks.
 var (
 	_ Provider = (*KMS)(nil)
+	_ Provider = (*GCPProvider)(nil)
 	_ Provider = (*LocalProvider)(nil)
 )
 

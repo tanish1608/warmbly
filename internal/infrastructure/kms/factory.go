@@ -11,6 +11,7 @@ import (
 // FromEnv constructs the active KMS provider from environment variables.
 //
 //	KMS_PROVIDER=aws    -> NewAWS (uses awscfg, KMS_AWS_KEY_ID or fallbackAWSKeyID)
+//	KMS_PROVIDER=gcp    -> NewGCPFromEnv (KMS_GCP_KEY_NAME)
 //	KMS_PROVIDER=local  -> NewLocalFromEnv
 //	(unset)             -> defaults to "aws" for backwards compatibility
 //
@@ -32,9 +33,11 @@ func FromEnv(ctx context.Context, awscfg aws.Config, fallbackAWSKeyID string) (P
 			return nil, fmt.Errorf("kms: aws provider requires KMS_AWS_KEY_ID or fallback key id")
 		}
 		return New(ctx, awscfg, keyID)
+	case "gcp", "gcp-kms":
+		return NewGCPFromEnv(ctx)
 	case "local":
 		return NewLocalFromEnv()
 	default:
-		return nil, fmt.Errorf("kms: unknown KMS_PROVIDER %q (want: aws, local)", provider)
+		return nil, fmt.Errorf("kms: unknown KMS_PROVIDER %q (want: aws, gcp, local)", provider)
 	}
 }
