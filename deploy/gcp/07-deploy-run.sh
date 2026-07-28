@@ -87,11 +87,23 @@ envfile() {
   echo "$out"
 }
 
+# Resolve the image per service. 04-build.sh can build a subset, so TAG may not
+# exist for every service; fall back to :latest (which every build also pushes)
+# rather than aborting the whole deploy on the first service that wasn't rebuilt.
+image_for() {
+  local name="$1"
+  if gc artifacts docker images describe "${IMAGE_BASE}/${name}:${TAG}" >/dev/null 2>&1; then
+    echo "${IMAGE_BASE}/${name}:${TAG}"
+  else
+    echo "${IMAGE_BASE}/${name}:latest"
+  fi
+}
+
 deploy() {
   local name="$1" env_yaml="$2"; shift 2
   # shellcheck disable=SC2086
   gc run deploy "warmbly-${name}" \
-    --image="${IMAGE_BASE}/${name}:${TAG}" \
+    --image="$(image_for "$name")" \
     --region="$REGION" --platform=managed \
     --service-account="$RUN_SA" \
     $VPC \
