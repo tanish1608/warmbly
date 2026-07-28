@@ -33,7 +33,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Google, Outlook, Logo } from "@/components/svg";
 import { TextInput } from "@/components/ui/field";
 import { useUserProfile } from "@/hooks/context/user";
-import { APP_URL } from "@/lib/information";
+import { API_URL, APP_URL } from "@/lib/information";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import addEmail from "@/lib/api/client/app/emails/addEmail";
@@ -87,15 +87,31 @@ export default function AddEmailModal() {
         }
     }, [user.addEmail]);
 
-    // Listen for the OAuth popup's postMessage. We only honour messages
-    // whose origin matches APP_URL and whose state matches the one we
-    // issued — protects against replay and stray posts.
+    // Listen for the OAuth popup's postMessage. We only honour messages from an
+    // origin we trust whose state matches the one we issued — protects against
+    // replay and stray posts.
+    //
+    // The callback page is served by the API, so API_URL's origin has to be on
+    // the allow-list: whenever the API and dashboard are on different origins
+    // (api.example.com vs app.example.com, :8080 vs :5173, separate Cloud Run
+    // services) every message is otherwise dropped and the connect silently
+    // never finishes.
     React.useEffect(() => {
+        const trustedOrigins = new Set(
+            [APP_URL, API_URL, window.location.origin]
+                .filter(Boolean)
+                .map((u) => {
+                    try {
+                        return new URL(u as string, window.location.origin).origin;
+                    } catch {
+                        return "";
+                    }
+                })
+                .filter(Boolean),
+        );
+
         function onMessage(event: MessageEvent) {
-            const expectedOrigin = APP_URL || window.location.origin;
-            if (event.origin && expectedOrigin && event.origin !== expectedOrigin && event.origin !== window.location.origin) {
-                return;
-            }
+            if (event.origin && !trustedOrigins.has(event.origin)) return;
             const data = event.data as OAuthCallbackMessage | undefined;
             if (!data || data.type !== "email_oauth_callback") return;
 

@@ -3,7 +3,9 @@ package handler
 import (
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -79,6 +81,25 @@ func (h *Handler) EmailOAuthCallbackOutlook(c *gin.Context) {
 	renderOAuthCallback(c, "outlook")
 }
 
+// appOrigin is the postMessage target for the callback popup. APP_ORIGIN wins;
+// otherwise it is derived from APP_URL, which every deployment already sets.
+// Without this the template falls back to "*", broadcasting the OAuth code to
+// whatever origin happens to own the opener.
+func appOrigin() string {
+	if origin := strings.TrimSpace(os.Getenv("APP_ORIGIN")); origin != "" {
+		return origin
+	}
+	appURL := strings.TrimSpace(os.Getenv("APP_URL"))
+	if appURL == "" {
+		return ""
+	}
+	u, err := url.Parse(appURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 func renderOAuthCallback(c *gin.Context, provider string) {
 	code := c.Query("code")
 	state := c.Query("state")
@@ -90,7 +111,7 @@ func renderOAuthCallback(c *gin.Context, provider string) {
 		State:     state,
 		Error:     providerErr,
 		Status:    "Connecting your mailbox… this window will close.",
-		AppOrigin: os.Getenv("APP_ORIGIN"),
+		AppOrigin: appOrigin(),
 	}
 	if providerErr != "" {
 		data.Status = "Connection cancelled."
