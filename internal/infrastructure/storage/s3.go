@@ -27,6 +27,13 @@ func NewClient(ctx context.Context, cfg aws.Config, bucket string) (*Client, err
 			// bucket. Real AWS (no endpoint override) keeps the default.
 			if os.Getenv("AWS_ENDPOINT_URL") != "" || os.Getenv("AWS_ENDPOINT_URL_S3") != "" {
 				o.UsePathStyle = true
+				// Recent SDK versions attach CRC32 checksum headers to every
+				// PutObject. Google Cloud Storage's S3-compatible API rejects
+				// them, and reports it as SignatureDoesNotMatch, which reads
+				// like a credentials or region fault and is not one. Only send
+				// a checksum when the operation actually requires it.
+				o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+				o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 			}
 		}),
 	}, nil
