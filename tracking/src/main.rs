@@ -48,7 +48,10 @@ async fn main() {
 
     // Event-bus producer (NATS by default; Kafka when EVENTBUS_PROVIDER=kafka
     // and the `kafka` feature is compiled in).
-    let producer = match Producer::from_config(&config).await {
+    // Retry with backoff: on platforms that attach the VPC interface in
+    // parallel with the container (Cloud Run direct VPC egress), the broker is
+    // briefly unreachable at t=0 and a single 5s connect races that setup.
+    let producer = match connect_producer(&config).await {
         Ok(p) => p,
         Err(e) => {
             report_error("Failed to create tracking event producer", e.as_ref());
@@ -94,4 +97,30 @@ async fn main() {
         observability::report_issue("Tracking server terminated unexpectedly", &e.to_string());
         std::process::exit(1);
     }
+}
+
+/// Build the producer, retrying transient connect failures with linear backoff.
+/// The broker being briefly unreachable at startup is a platform artifact, not a
+/// reason to crashloop.
+async fn connect_producer(
+    config: &crate::config::Config,
+) -> Result<Producer, Box<dyn std::error::Error + Send + Sync>> {
+    const ATTEMPTS: u32 = 6;
+    let mut last: Option<Box<dyn std::error::Error + Send + Sync>> = None;
+    for attempt in 1..=ATTEMPTS {
+        match Producer::from_config(config).await {
+            Ok(p) => return Ok(p),
+            Err(e) => {
+                info!(
+                    "event bus not reachable (attempt {}/{}): {}",
+                    attempt, ATTEMPTS, e
+                );
+                last = Some(e);
+                if attempt < ATTEMPTS {
+                    tokio::time::sleep(std::time::Duration::from_secs(2 * attempt as u64)).await;
+                }
+            }
+        }
+    }
+    Err(last.unwrap_or_else(|| "event bus unreachable".into()))
 }
