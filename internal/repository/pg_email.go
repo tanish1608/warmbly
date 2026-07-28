@@ -208,6 +208,14 @@ func (r *emailRepository) NewOauthAccount(ctx context.Context, userID string, da
 		sentry.CaptureException(errors.New("invalid inbox provider"))
 		return nil, errx.InternalError()
 	}
+	// OAuth tokens are sealed here because GetOauthCredentials decrypts them on
+	// read. Storing them raw leaves Gmail/Graph refresh tokens in plaintext AND
+	// makes every later credential read fail to hex-decode, so the mailbox can
+	// never send.
+	if r.Encrypt == nil {
+		sentry.CaptureException(errNoCredentialEncrypter)
+		return nil, errx.InternalError()
+	}
 
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
@@ -259,10 +267,21 @@ func (r *emailRepository) NewOauthAccount(ctx context.Context, userID string, da
 		VALUES ($1, $2, $3, $4)
 	`
 
+	encAccessToken, err := r.Encrypt.Encrypt(data.AccessToken)
+	if err != nil {
+		sentry.CaptureException(err)
+		return nil, errx.InternalError()
+	}
+	encRefreshToken, err := r.Encrypt.Encrypt(data.RefreshToken)
+	if err != nil {
+		sentry.CaptureException(err)
+		return nil, errx.InternalError()
+	}
+
 	params = []any{
 		id,
-		data.AccessToken,
-		data.RefreshToken,
+		encAccessToken,
+		encRefreshToken,
 		data.ExpiresAt,
 	}
 

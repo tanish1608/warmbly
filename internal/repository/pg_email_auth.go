@@ -150,6 +150,24 @@ func (r *emailRepository) RevokeOauth(ctx context.Context, id string) *errx.Erro
 }
 
 func (r *emailRepository) RefreshBoxToken(ctx context.Context, id uuid.UUID, accessToken, refreshToken string, expiresAt time.Time) error {
+	// Sealed on write to match GetOauthCredentials, which decrypts on read.
+	// Writing raw here would re-plaintext a correctly sealed row on the first
+	// token refresh.
+	if r.Encrypt == nil {
+		sentry.CaptureException(errNoCredentialEncrypter)
+		return errNoCredentialEncrypter
+	}
+	encAccessToken, err := r.Encrypt.Encrypt(accessToken)
+	if err != nil {
+		sentry.CaptureException(err)
+		return err
+	}
+	encRefreshToken, err := r.Encrypt.Encrypt(refreshToken)
+	if err != nil {
+		sentry.CaptureException(err)
+		return err
+	}
+
 	query := `
 		UPDATE email_accounts_oauth
 		SET access_token = $1, refresh_token = $2, expires_at = $3
@@ -157,13 +175,13 @@ func (r *emailRepository) RefreshBoxToken(ctx context.Context, id uuid.UUID, acc
 	`
 
 	params := []any{
-		accessToken,
-		refreshToken,
+		encAccessToken,
+		encRefreshToken,
 		expiresAt,
 		id,
 	}
 
-	_, err := r.DB.Exec(
+	_, err = r.DB.Exec(
 		ctx,
 		query,
 		params...,
