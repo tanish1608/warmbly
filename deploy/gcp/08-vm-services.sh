@@ -35,6 +35,20 @@ if [ -z "$WORKER_UUID" ]; then
 fi
 echo "Worker ID: ${WORKER_UUID}"
 
+# Resolve each image independently: 04-build.sh can build a subset, so TAG may
+# not exist for every service. Fall back to :latest rather than leaving a unit
+# unable to pull.
+image_for() {
+  local name="$1"
+  if gc artifacts docker images describe "${IMAGE_BASE}/${name}:${TAG}" >/dev/null 2>&1; then
+    echo "${IMAGE_BASE}/${name}:${TAG}"
+  else
+    echo "${IMAGE_BASE}/${name}:latest"
+  fi
+}
+CONSUMER_IMAGE="$(image_for consumer)"
+WORKER_IMAGE="$(image_for worker)"
+
 REMOTE="$(mktemp)"
 trap 'rm -f "$REMOTE"' EXIT
 
@@ -144,8 +158,8 @@ WantedBy=multi-user.target
 UNIT
 }
 
-unit consumer "${IMAGE_BASE}/consumer:${TAG}" /var/lib/warmbly/consumer.env
-unit worker   "${IMAGE_BASE}/worker:${TAG}"   /var/lib/warmbly/worker.env
+unit consumer "${CONSUMER_IMAGE}" /var/lib/warmbly/consumer.env
+unit worker   "${WORKER_IMAGE}"   /var/lib/warmbly/worker.env
 
 sudo systemctl daemon-reload
 sudo systemctl enable warmbly-consumer.service warmbly-worker.service
