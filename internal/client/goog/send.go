@@ -39,7 +39,7 @@ func (c *Client) SendMessage(
 	// base64url Raw. The no-attachment path keeps the existing structured form
 	// so threading/back-compat behavior is unchanged.
 	if len(attachments) > 0 {
-		return c.sendRawWithAttachments(to, cc, bcc, messageID, subject, bodyPlain, bodyHTML, parent, attachments, customHeaders...)
+		return c.sendRawWithAttachments(ctx, to, cc, bcc, messageID, subject, bodyPlain, bodyHTML, parent, attachments, customHeaders...)
 	}
 
 	// Compose headers
@@ -117,7 +117,7 @@ func (c *Client) SendMessage(
 	}
 
 	// Send via Gmail API
-	sent, err := c.srv.Users.Messages.Send("me", msg).Do()
+	sent, err := c.srv.Users.Messages.Send("me", msg).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("send message failed: %w", err)
 	}
@@ -129,6 +129,7 @@ func (c *Client) SendMessage(
 // (multipart/alternative for text+html, then one application/* part per
 // attachment) and submits it via the Gmail API as base64url-encoded Raw.
 func (c *Client) sendRawWithAttachments(
+	ctx context.Context,
 	to, cc, bcc []string,
 	messageID,
 	subject, bodyPlain, bodyHTML string,
@@ -172,7 +173,7 @@ func (c *Client) sendRawWithAttachments(
 		msg.ThreadId = parent.ThreadID
 	}
 
-	sent, err := c.srv.Users.Messages.Send("me", msg).Do()
+	sent, err := c.srv.Users.Messages.Send("me", msg).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("send message failed: %w", err)
 	}

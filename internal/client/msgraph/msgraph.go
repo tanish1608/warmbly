@@ -67,6 +67,11 @@ func (c *Client) Init(ctx context.Context, token *oauth2.Token, cfg oauth2.Confi
 	ts := cfg.TokenSource(ctx, token)
 	ts = oauth2.ReuseTokenSource(token, ts)
 	ts = stoken.New(ts, func(t *oauth2.Token) error {
+		// Defensive: a caller that leaves the hook unset must not crash the
+		// process on the first refresh.
+		if c.OnTokenRefresh == nil {
+			return nil
+		}
 		return c.OnTokenRefresh(context.Background(), t)
 	})
 

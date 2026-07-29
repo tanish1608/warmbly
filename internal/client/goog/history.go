@@ -12,7 +12,7 @@ func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64
 	var newLastHistoryID uint64
 
 	for {
-		resp, err := call.Do()
+		resp, err := call.Context(ctx).Do()
 		if err != nil {
 			return newLastHistoryID, HandleError(err)
 		}

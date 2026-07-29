@@ -125,6 +125,13 @@ func NewWMail(
 				OnMessageRemove: mail.onGoogleMessageRemove,
 				OnLabelAdd:      mail.onGoogleMessageLabelsAdded,
 				OnLabelRemove:   mail.onGoogleMessageLabelsRemoved,
+				// Without this the refresh hook is nil, and the first token
+				// refresh nil-derefs inside Init's closure: a hard crash on the
+				// send path and a recovered panic on every mail sync. The
+				// Outlook client below already wires the same callback.
+				OnTokenRefresh: func(_ context.Context, t *oauth2.Token) error {
+					return mail.onTokenUpdate(t)
+				},
 			},
 			LastHistoryID: data.Google.LastHistoryID,
 		}
