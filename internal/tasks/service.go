@@ -49,7 +49,7 @@ type TasksService interface {
 	HandleUserEmailTask(task *proto.ProcessTask) *errx.Error
 
 	// Test email support
-	SendTestEmail(ctx context.Context, userID string, accountID uuid.UUID, recipient string, campaign *models.Campaign, sequence *models.Sequence) *errx.Error
+	SendTestEmail(ctx context.Context, userID string, orgID uuid.UUID, accountID uuid.UUID, contactID *uuid.UUID, recipient string, campaign *models.Campaign, sequence *models.Sequence) *errx.Error
 	GetCampaignSequences(ctx context.Context, campaignID uuid.UUID) ([]models.Sequence, error)
 
 	// Warmup scheduling lifecycle

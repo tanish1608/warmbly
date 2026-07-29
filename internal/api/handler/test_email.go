@@ -14,6 +14,8 @@ type sendTestEmailRequest struct {
 	SequenceID *uuid.UUID `json:"step_id"`
 	AccountID  uuid.UUID  `json:"account_id" binding:"required"`
 	Recipient  string     `json:"recipient" binding:"required,email"`
+	// Optional: render against a real contact so custom merge fields resolve.
+	ContactID *uuid.UUID `json:"contact_id"`
 }
 
 // SendTestEmail sends a preview/test email for a campaign sequence
@@ -38,8 +40,10 @@ func (h *Handler) SendTestEmail(c *gin.Context) {
 		return
 	}
 
-	// Load campaign
-	campaign, xerr := h.CampaignService.Get(c.Request.Context(), userID, campaignID.String())
+	// Load campaign. CampaignService.Get is scoped by ORGANIZATION (the query is
+	// WHERE c.organization_id = $1); passing the user id here matched no row and
+	// 404'd every test send.
+	campaign, xerr := h.CampaignService.Get(c.Request.Context(), orgID.String(), campaignID.String())
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return
@@ -74,7 +78,7 @@ func (h *Handler) SendTestEmail(c *gin.Context) {
 	}
 
 	// Send the test email
-	xerr = h.TasksService.SendTestEmail(c.Request.Context(), userID, req.AccountID, req.Recipient, campaign, sequence)
+	xerr = h.TasksService.SendTestEmail(c.Request.Context(), userID, *orgID, req.AccountID, req.ContactID, req.Recipient, campaign, sequence)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return

@@ -5,10 +5,11 @@
 // content score).
 
 import React from "react";
-import { GitBranchIcon, Loader2Icon } from "lucide-react";
+import { GitBranchIcon, Loader2Icon, SendIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import type Sequence from "@/lib/api/models/app/campaigns/sequences/Sequence";
 import EmailContentEditor from "./EmailContentEditor";
+import SendTestEmailDialog from "./SendTestEmailDialog";
 import { Label, TextInput } from "@/components/ui/field";
 import useUpdateSequence from "@/lib/api/hooks/app/campaigns/sequences/useUpdateSequence";
 import type { AppError } from "@/lib/api/client/normalizeError";
@@ -43,6 +44,7 @@ export default function SequenceView({
     const updateSequence = useUpdateSequence(campaignId, sequence.id);
 
     const [load, setLoad] = React.useState(false);
+    const [testOpen, setTestOpen] = React.useState(false);
     const [draft, setDraft] = React.useState<Draft>(() => toDraft(sequence));
     React.useEffect(() => {
         setDraft(toDraft(sequence));
@@ -92,6 +94,16 @@ export default function SequenceView({
                     {headerExtra}
                     <button
                         type="button"
+                        onClick={() => setTestOpen(true)}
+                        disabled={load}
+                        title="Send this step to yourself as a test"
+                        className="h-7 px-2.5 rounded-md border border-slate-200 bg-white text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900 inline-flex items-center gap-1.5 disabled:opacity-40"
+                    >
+                        <SendIcon className="w-3 h-3" />
+                        Send test
+                    </button>
+                    <button
+                        type="button"
                         onClick={() => setDraft(toDraft(sequence))}
                         disabled={!savable || load}
                         className="h-7 px-2.5 rounded-md border border-slate-200 bg-white text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900 disabled:opacity-40"
@@ -135,6 +147,15 @@ export default function SequenceView({
                     </div>
                 )}
             </div>
+
+            <SendTestEmailDialog
+                open={testOpen}
+                onClose={() => setTestOpen(false)}
+                campaignId={campaignId}
+                stepId={sequence.id}
+                subject={draft.subject}
+                bodyHtml={draft.body_html}
+            />
         </div>
     );
 }

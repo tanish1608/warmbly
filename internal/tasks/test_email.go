@@ -14,8 +14,13 @@ func (s *tasksService) GetCampaignSequences(ctx context.Context, campaignID uuid
 	return s.campaignRepo.GetSequencesByCampaignID(ctx, campaignID)
 }
 
-// SendTestEmail renders a campaign email and sends it to a test recipient for preview
-func (s *tasksService) SendTestEmail(ctx context.Context, userID string, accountID uuid.UUID, recipient string, campaign *models.Campaign, sequence *models.Sequence) *errx.Error {
+// SendTestEmail renders a campaign step and sends it to a test recipient.
+//
+// contactID is optional. When set, the step renders against that real contact
+// (org-scoped), so custom merge fields like {{.subject}} and {{.body}} resolve
+// exactly as they would in the live campaign. When nil it falls back to a
+// synthetic contact, which leaves every custom field empty.
+func (s *tasksService) SendTestEmail(ctx context.Context, userID string, orgID uuid.UUID, accountID uuid.UUID, contactID *uuid.UUID, recipient string, campaign *models.Campaign, sequence *models.Sequence) *errx.Error {
 	// Load the email account
 	account, err := s.emailRepo.GetByID(ctx, accountID)
 	if err != nil || account == nil {
@@ -34,6 +39,20 @@ func (s *tasksService) SendTestEmail(ctx context.Context, userID string, account
 		LastName:  "Recipient",
 		Email:     recipient,
 		Company:   "Test Company",
+	}
+	// A real contact renders the campaign as recipients actually receive it.
+	// Scoped by organization so a test can never read another org's contact.
+	if contactID != nil {
+		found, cerr := s.contactRepo.GetByIDsAndOrganization(ctx, orgID, []uuid.UUID{*contactID})
+		if cerr != nil {
+			return cerr
+		}
+		if len(found) == 0 {
+			return errx.New(errx.NotFound, "contact not found")
+		}
+		testContact = found[0]
+		// Keep delivery pointed at the tester, not the contact's real inbox.
+		testContact.Email = recipient
 	}
 
 	// Render templates with the test contact
