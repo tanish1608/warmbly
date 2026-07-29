@@ -55,6 +55,11 @@ fi
 
 SEC() { echo "$1=warmbly-$2:latest"; }
 
+# Blob storage is MinIO on the infra VM, not GCS. aws-sdk-go-v2 cannot sign
+# requests that GCS's S3-compatible API accepts (verified: the identical
+# PutObject fails on GCS and succeeds on MinIO with the same credentials), so
+# every email-body upload failed and no send event was ever published.
+
 # The dashboard always renders the Turnstile widget, and an empty sitekey makes
 # it hang on "Verification timed out" so nobody can sign up or log in. The
 # backend runs CAPTCHA_PROVIDER=none and never validates the token, so
@@ -67,7 +72,7 @@ TURNSTILE_SITE_KEY="${TURNSTILE_SITE_KEY:-1x00000000000000000000AA}"
 # registration 500s on a DNS lookup for email.<region>.amazonaws.com. Point
 # SMTP_HOST/SMTP_PORT at a real relay when this stops being a single-tenant box.
 
-COMMON_SECRETS="$(SEC AUTH_SECRET auth-secret),$(SEC CREDENTIALS_ENCRYPTION_KEY credentials-encryption-key),$(SEC KMS_LOCAL_MASTER_KEY kms-local-master-key),$(SEC INTERNAL_API_TOKEN internal-api-token),$(SEC PRIMARY_DB primary-db),$(SEC AWS_ACCESS_KEY_ID gcs-hmac-key),$(SEC AWS_SECRET_ACCESS_KEY gcs-hmac-secret)"
+COMMON_SECRETS="$(SEC AUTH_SECRET auth-secret),$(SEC CREDENTIALS_ENCRYPTION_KEY credentials-encryption-key),$(SEC KMS_LOCAL_MASTER_KEY kms-local-master-key),$(SEC INTERNAL_API_TOKEN internal-api-token),$(SEC PRIMARY_DB primary-db),$(SEC AWS_ACCESS_KEY_ID minio-root-user),$(SEC AWS_SECRET_ACCESS_KEY minio-root-password)"
 
 VPC="--network=default --subnet=default --vpc-egress=private-ranges-only"
 
@@ -126,11 +131,9 @@ CAPTCHA_PROVIDER=none
 PUBSUB_ENABLED=false
 REDIS=redis://${INFRA_IP}:6379
 BLOB_PROVIDER=s3
-BLOB_BUCKET=${BUCKET}
-AWS_ENDPOINT_URL_S3=https://storage.googleapis.com
-AWS_REGION=us-central1
-AWS_REQUEST_CHECKSUM_CALCULATION=when_required
-AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+BLOB_BUCKET=warmbly
+AWS_ENDPOINT_URL_S3=http://${INFRA_IP}:9000
+AWS_REGION=us-east-1
 GCP_PROJECT_ID=${PROJECT_ID}
 EOF
 }

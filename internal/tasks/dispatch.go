@@ -38,7 +38,12 @@ func (s *tasksService) HandleTask(task *proto.ProcessTask) *errx.Error {
 		return s.HandleCampaignTask(task)
 	case "warmup":
 		return s.HandleEmailTask(task)
-	case "user_email":
+	case "user_email", "email":
+		// emailsend.Service writes task_type "email" for composed/unibox sends
+		// while this dispatch only knew "user_email"; both are backed by the
+		// same email_tasks row that HandleUserEmailTask reads, so an unmapped
+		// "email" made every such send dead-end at dispatch while the UI still
+		// reported it as sent.
 		return s.HandleUserEmailTask(task)
 	default:
 		log.Warn().Str("task_id", taskID.String()).Str("task_type", rec.TaskType).Msg("task dispatch: unknown task type")

@@ -61,8 +61,7 @@ sec() {
   echo "INTERNAL_API_TOKEN=\$(sec warmbly-internal-api-token)"
   echo "AUTH_SECRET=\$(sec warmbly-auth-secret)"
   echo "PRIMARY_DB=\$(sec warmbly-primary-db)"
-  echo "AWS_ACCESS_KEY_ID=\$(sec warmbly-gcs-hmac-key)"
-  echo "AWS_SECRET_ACCESS_KEY=\$(sec warmbly-gcs-hmac-secret)"
+  echo "AWS_SECRET_ACCESS_KEY=\$(sec warmbly-minio-root-password)"
   echo "BOX_GOOGLE_CLIENT_ID=\$(sec warmbly-box-google-client-id)"
   echo "BOX_GOOGLE_CLIENT_SECRET=\$(sec warmbly-box-google-client-secret)"
 } > /var/lib/warmbly/secrets.env
@@ -83,16 +82,15 @@ CODEC_PROVIDER=json
 KMS_PROVIDER=local
 REDIS=redis://localhost:6379
 BLOB_PROVIDER=s3
-AWS_ENDPOINT_URL_S3=https://storage.googleapis.com
-AWS_REGION=us-central1
-AWS_REQUEST_CHECKSUM_CALCULATION=when_required
-AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+AWS_ENDPOINT_URL_S3=http://localhost:9000
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=warmbly
 TASKS_PROVIDER=local
 BILLING_PROVIDER=none
 CAPTCHA_PROVIDER=none
 PUBSUB_ENABLED=false
 ENVCOMMON
-echo "BLOB_BUCKET=${BUCKET}" | sudo tee -a /var/lib/warmbly/common.env >/dev/null
+echo "BLOB_BUCKET=warmbly" | sudo tee -a /var/lib/warmbly/common.env >/dev/null
 echo "GCP_PROJECT_ID=${PROJECT_ID}" | sudo tee -a /var/lib/warmbly/common.env >/dev/null
 
 # WORKER_TIER=shared_free is deliberate, not a typo. BILLING_PROVIDER=none means
