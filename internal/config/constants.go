@@ -103,7 +103,7 @@ const (
 	// because the per-day shape protects abuse posture rather than
 	// product utility.
 	DailyThrottleNewCampaigns = 20 // new campaigns per org per day
-	DailyThrottleNewMailboxes = 5  // newly connected mailboxes per org per day
+	DailyThrottleNewMailboxes = 50 // newly connected mailboxes per org per day
 	DailyThrottleNewOrgs      = 3  // new workspaces per owner per day
 
 	// DailyThrottleNewScheduledSends caps how many NEW scheduled-send
