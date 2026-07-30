@@ -58,13 +58,14 @@ This client is optional. Email+password and passkeys work without it.
   https://warmbly-backend-390860474553.us-central1.run.app/addresses/google/callback
   ```
 
-Add these six scopes on the consent screen. This is what
-`internal/config/inbox.go` actually requests, so anything missing here fails at
-connect time:
+These are the five scopes `internal/config/inbox.go` requests at runtime, which
+is what actually governs the grant. Declaring them on the consent screen's Data
+Access page is for verification and the consent-screen display; leaving that page
+empty does not block a connect, so treat this list as the code's contract rather
+than a console checklist:
 
 ```
 https://www.googleapis.com/auth/gmail.compose
-https://www.googleapis.com/auth/gmail.metadata
 https://www.googleapis.com/auth/gmail.modify
 https://www.googleapis.com/auth/gmail.send
 https://www.googleapis.com/auth/gmail.settings.basic
@@ -72,8 +73,14 @@ https://www.googleapis.com/auth/gmail.readonly
 ```
 
 Note this is a longer list than the plan document assumed
-(`gmail.send`/`modify`/`readonly`). `gmail.compose`, `gmail.metadata` and
-`gmail.settings.basic` are also requested.
+(`gmail.send`/`modify`/`readonly`). `gmail.compose` and `gmail.settings.basic`
+are also requested.
+
+Do NOT add `gmail.metadata`. Gmail applies the most restrictive granted scope to
+`messages.get`, so a token carrying it rejects `format=FULL` with "Metadata
+scope doesn't allow format FULL" and mail sync can never read a message body.
+`modify` and `readonly` already cover what it grants. A mailbox authorized
+while that scope was requested keeps it in its grant and must be reconnected.
 
 Store it:
 

@@ -18,9 +18,13 @@ func GoogleOauth2Inbox(baseURL string) *oauth2.Config {
 		ClientID:     os.Getenv("BOX_GOOGLE_CLIENT_ID"),
 		ClientSecret: os.Getenv("BOX_GOOGLE_CLIENT_SECRET"),
 		RedirectURL:  baseURL + "/addresses/google/callback",
+		// No gmail.metadata: Gmail applies the most restrictive granted scope to
+		// messages.get, so including it rejects format=FULL with "Metadata scope
+		// doesn't allow format FULL" and sync can never read a message body, even
+		// though modify and readonly are also granted. Those two already cover
+		// everything metadata does.
 		Scopes: []string{
 			gmail.GmailComposeScope,
-			gmail.GmailMetadataScope,
 			gmail.GmailModifyScope,
 			gmail.GmailSendScope,
 			gmail.GmailSettingsBasicScope,

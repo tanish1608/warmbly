@@ -99,7 +99,11 @@ func (w *WMail) onImapEmailUpdate(ctx context.Context, msg *models.EmailMessageD
 
 		w.maybeEmitBounce(msg)
 
-		if err := w.onEvent(models.JobEventTypeNewEmail, data); err != nil {
+		// Envelope, not a bare payload — see the note in event_google.go.
+		if err := w.onEvent(models.JobEventTypeNewEmail, &models.JobEventNewEmail{
+			UserID:  w.UserID,
+			Message: data,
+		}); err != nil {
 			return err
 		}
 	} else {

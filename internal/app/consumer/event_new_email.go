@@ -34,6 +34,18 @@ func (s *JobsService) HandleNewEmail(ctx context.Context, e *models.JobEventNewE
 		}
 	}
 
+	// Guard before the insert, not after it. CreateEntry dereferences Message
+	// immediately, so a nil one panicked the whole consumer process and the bus
+	// redelivered the same event into the same crash on restart. The block below
+	// already treated Message as optional.
+	if e.Message == nil || e.UserID == uuid.Nil {
+		log.Error().
+			Str("user_id", e.UserID.String()).
+			Bool("has_message", e.Message != nil).
+			Msg("new email event missing user id or message; dropping event")
+		return nil
+	}
+
 	// Normal email processing
 	if err := s.UniboxRepository.CreateEntry(ctx, e.UserID, e.Message); err != nil {
 		CaptureError(e.UserID, e.Message.EmailID, err)

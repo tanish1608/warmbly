@@ -78,7 +78,11 @@ func (w *WMail) onGraphMessageAdd(ctx context.Context, msg *models.EmailMessageD
 	}
 
 	w.maybeEmitBounce(msg)
-	return w.onEvent(models.JobEventTypeNewEmail, data)
+	// Envelope, not a bare payload — see the note in event_google.go.
+	return w.onEvent(models.JobEventTypeNewEmail, &models.JobEventNewEmail{
+		UserID:  w.UserID,
+		Message: data,
+	})
 }
 
 // onGraphMessageRemove emits REMOVE_EMAIL for a message deleted or moved out of a

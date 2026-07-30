@@ -7,6 +7,14 @@ import (
 )
 
 func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64, error) {
+	// A zero cursor means the mailbox has never synced. Gmail rejects
+	// startHistoryId=0 with 404, and the caller only persists a cursor when this
+	// returns one, so passing 0 through would 404 on every pass forever and the
+	// mailbox would never sync at all. Anchor on the mailbox's present state.
+	if lastHistoryID == 0 {
+		return c.currentHistoryID(ctx)
+	}
+
 	call := c.srv.Users.History.List("me").MaxResults(500).StartHistoryId(lastHistoryID) // It does not include the record that has that exact HistoryID
 
 	var newLastHistoryID uint64
@@ -14,6 +22,12 @@ func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64
 	for {
 		resp, err := call.Context(ctx).Do()
 		if err != nil {
+			// 404 means the cursor predates Gmail's history retention. The
+			// documented recovery is a full resync, so re-anchor on the current
+			// historyId instead of failing this pass (and every later one).
+			if gerr, ok := err.(*googleapi.Error); ok && gerr.Code == 404 {
+				return c.currentHistoryID(ctx)
+			}
 			return newLastHistoryID, HandleError(err)
 		}
 
@@ -60,4 +74,15 @@ func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64
 	}
 
 	return newLastHistoryID, nil
+}
+
+// currentHistoryID anchors the sync cursor on the mailbox's present state. Mail
+// already in the mailbox is not replayed: the cursor exists to detect changes
+// from this point on, which is what reply tracking needs.
+func (c *Client) currentHistoryID(ctx context.Context) (uint64, error) {
+	prof, err := c.srv.Users.GetProfile("me").Context(ctx).Do()
+	if err != nil {
+		return 0, HandleError(err)
+	}
+	return prof.HistoryId, nil
 }

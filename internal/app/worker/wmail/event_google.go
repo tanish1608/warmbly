@@ -78,7 +78,15 @@ func (w *WMail) onGoogleMessageAdd(ctx context.Context, msg *models.EmailMessage
 
 	w.maybeEmitBounce(msg)
 
-	if err := w.onEvent(models.JobEventTypeNewEmail, data); err != nil {
+	// NEW_EMAIL carries the JobEventNewEmail envelope, not a bare
+	// EmailMessageStoreData: the consumer decodes {user_id, message}, so
+	// publishing the payload unwrapped left both fields absent — user_id decoded
+	// to the zero UUID and message to nil, which segfaulted the consumer on the
+	// first inbound message.
+	if err := w.onEvent(models.JobEventTypeNewEmail, &models.JobEventNewEmail{
+		UserID:  w.UserID,
+		Message: data,
+	}); err != nil {
 		return err
 	}
 

@@ -105,14 +105,28 @@ func (r *uniboxRepository) CreateEntry(ctx context.Context, userID uuid.UUID, e 
 		ON CONFLICT (id) DO NOTHING
 	`
 
+	// Every address column is text[] NOT NULL. The column defaults never apply
+	// because the insert passes each value explicitly, so a nil Go slice binds as
+	// NULL and violates the constraint. Any message without a Bcc, Cc, or
+	// In-Reply-To (i.e. most of them) has nil there.
 	_, err := r.db.Exec(ctx, query,
 		e.ID, userID, e.EmailID, e.Mailbox, e.ThreadID, e.MessageID,
 		e.GmailID, e.ParentID, e.UID, e.ModSeq,
-		e.Flags, e.BCC, e.CC, e.FromAddr, e.InReplyTo, e.ReplyTo,
-		e.ToAddr, e.Subject, e.Size, e.InternalDate, e.SentDate,
+		nonNilList(e.Flags), nonNilList(e.BCC), nonNilList(e.CC), nonNilList(e.FromAddr),
+		nonNilList(e.InReplyTo), nonNilList(e.ReplyTo), nonNilList(e.ToAddr),
+		e.Subject, e.Size, e.InternalDate, e.SentDate,
 		e.Snippet, e.Seen, e.CreatedAt, e.UpdatedAt,
 	)
 	return err
+}
+
+// nonNilList binds an empty array rather than NULL for the NOT NULL text[]
+// columns on unibox_emails.
+func nonNilList(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
 }
 
 func (r *uniboxRepository) UpdateEntry(ctx context.Context, userID, emailID, id uuid.UUID, e *UpdateUniboxEntry) error {
