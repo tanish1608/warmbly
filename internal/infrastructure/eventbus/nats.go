@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,17 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/rs/zerolog/log"
+)
+
+const (
+	// maxDeliver bounds redelivery of a failing message. On the last attempt the
+	// payload is parked on the DLQ (see publishDLQ) rather than dropped.
+	maxDeliver = 10
+
+	// dlqPrefix namespaces dead-lettered topics. It stays inside the stream's
+	// "<prefix>.>" filter, and no consumer's FilterSubjects match it, so parked
+	// messages are retained instead of redelivered.
+	dlqPrefix = "dlq."
 )
 
 // NATSBus is the EventBus backed by NATS JetStream. JetStream (not core NATS)
@@ -164,6 +176,40 @@ func (b *NATSBus) ensureStream(ctx context.Context, maxAge time.Duration) error 
 	return b.streamErr
 }
 
+// DLQTopic returns the dead-letter topic a poisoned message from topic lands on.
+// It sits under the same stream prefix, and no consumer filters on it, so
+// parked messages are retained for inspection rather than redelivered.
+func DLQTopic(topic string) string {
+	return dlqPrefix + topic
+}
+
+// publishDLQ parks a message that exhausted its delivery attempts, preserving
+// the original payload plus enough context to replay or diagnose it.
+func (b *NATSBus) publishDLQ(ctx context.Context, topic, key string, payload []byte, cause error, delivered uint64) error {
+	pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	msg := &nats.Msg{
+		Subject: b.subject(DLQTopic(topic)),
+		Data:    payload,
+		Header:  nats.Header{},
+	}
+	msg.Header.Set("Warmbly-DLQ-Origin", topic)
+	msg.Header.Set("Warmbly-DLQ-Error", cause.Error())
+	msg.Header.Set("Warmbly-DLQ-Delivered", strconv.FormatUint(delivered, 10))
+	msg.Header.Set("Warmbly-DLQ-At", time.Now().UTC().Format(time.RFC3339))
+	if key != "" {
+		msg.Header.Set("Warmbly-Key", key)
+	}
+
+	// Deliberately no Nats-Msg-Id: the dedup window would swallow a second
+	// failure of the same logical event, which is exactly what we want recorded.
+	if _, err := b.js.PublishMsg(pctx, msg); err != nil {
+		return fmt.Errorf("eventbus nats: publish dlq %s: %w", topic, err)
+	}
+	return nil
+}
+
 func (b *NATSBus) Publish(ctx context.Context, topic, key string, payload []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -227,7 +273,7 @@ func (b *NATSBus) Subscribe(ctx context.Context, topics []string, group string, 
 		AckPolicy:      jetstream.AckExplicitPolicy,
 		DeliverPolicy:  jetstream.DeliverAllPolicy,
 		FilterSubjects: subjects,
-		MaxDeliver:     10,
+		MaxDeliver:     maxDeliver,
 		AckWait:        handlerTimeout() + 5*time.Second,
 	})
 	if err != nil {
@@ -254,6 +300,26 @@ func (b *NATSBus) Subscribe(ctx context.Context, topics []string, group string, 
 			Payload: m.Data(),
 		}); err != nil {
 			log.Error().Err(err).Str("subject", m.Subject()).Msg("eventbus nats handler error")
+
+			// On the final delivery, park the message on the DLQ instead of
+			// letting JetStream drop it. Past MaxDeliver a Nak is not retried, so
+			// without this the payload is gone with only a log line left behind.
+			if meta, merr := m.Metadata(); merr == nil && meta.NumDelivered >= maxDeliver {
+				if dlqErr := b.publishDLQ(ctx, topic, key, m.Data(), err, meta.NumDelivered); dlqErr != nil {
+					// Nothing left to fall back on: the next Nak will not be
+					// redelivered either, so say so loudly rather than quietly ack.
+					log.Error().Err(dlqErr).Str("subject", m.Subject()).
+						Msg("eventbus nats dead-letter failed; message is being dropped")
+				} else {
+					log.Warn().Str("subject", m.Subject()).Uint64("delivered", meta.NumDelivered).
+						Msg("eventbus nats message dead-lettered")
+				}
+				if ackErr := m.Ack(); ackErr != nil {
+					log.Warn().Err(ackErr).Msg("eventbus nats ack failed")
+				}
+				return
+			}
+
 			// Nak with a short delay so transient errors don't hot-loop.
 			if nakErr := m.NakWithDelay(time.Second); nakErr != nil {
 				log.Warn().Err(nakErr).Msg("eventbus nats nak failed")
