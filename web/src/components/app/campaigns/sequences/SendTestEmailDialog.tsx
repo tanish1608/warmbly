@@ -73,11 +73,13 @@ export default function SendTestEmailDialog({
             sort_by: "created_at",
             reverse: true,
         },
-        limit: 5,
+        // The API floor is config.LimitMin (10); anything smaller is rejected
+        // with 400 by validate.Limit, so ask for the minimum and trim locally.
+        limit: 10,
         enabled: open && contactQuery.trim().length > 1,
         keepPrevious: true,
     });
-    const contacts = contactResults ?? [];
+    const contacts = (contactResults ?? []).slice(0, 6);
     const selectedContact = React.useMemo(
         () => contacts.find((c) => c.id === contactId) ?? null,
         [contacts, contactId],
