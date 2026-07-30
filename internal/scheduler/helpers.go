@@ -125,6 +125,19 @@ func nextScheduleSlot(from time.Time, sw models.ScheduleWindows, tz *time.Locati
 	return from
 }
 
+// nextAccountOpen returns the next 08:00 in t's own location at or after t,
+// for a mailbox held back by the 8am-8pm account-local gate. Callers only reach
+// this with an hour outside [8,20), so an hour past the 8pm close rolls to the
+// following morning and an early hour opens the same day.
+func nextAccountOpen(t time.Time) time.Time {
+	y, m, d := t.Date()
+	open := time.Date(y, m, d, 8, 0, 0, 0, t.Location())
+	if t.Hour() >= 20 {
+		open = open.Add(24 * time.Hour)
+	}
+	return open
+}
+
 // ensureBusinessHours ensures time is within business hours (8am-8pm)
 func ensureBusinessHours(t time.Time, timezone string) time.Time {
 	loc := loadLocation(timezone)

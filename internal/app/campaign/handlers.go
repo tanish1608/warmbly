@@ -381,14 +381,16 @@ func (s *campaignService) StopCampaign(ctx context.Context, orgID uuid.UUID, cam
 	return nil
 }
 
-func (s *campaignService) GetLogs(ctx context.Context, userID, campaignID string, limit int, cursor *string) (*models.CampaignLogsResult, *errx.Error) {
+func (s *campaignService) GetLogs(ctx context.Context, orgID, campaignID string, limit int, cursor *string) (*models.CampaignLogsResult, *errx.Error) {
 	cID, parseErr := uuid.Parse(campaignID)
 	if parseErr != nil {
 		return nil, errx.ErrUuid
 	}
 
-	// Verify user owns this campaign
-	_, err := s.campaignRepository.Get(ctx, userID, campaignID)
+	// Verify the campaign belongs to the org. campaignRepository.Get is scoped by
+	// ORGANIZATION (WHERE c.organization_id = $1); passing the user id here
+	// matched no row and 404'd the activity log on every campaign.
+	_, err := s.campaignRepository.Get(ctx, orgID, campaignID)
 	if err != nil {
 		if errors.Is(err, errx.ErrResourceNotFound) {
 			return nil, errx.ErrNotFound

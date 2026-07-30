@@ -253,6 +253,14 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 	// STEP 8: Build weighted account candidates
 	// Skip accounts whose local time falls outside business hours (8am-8pm)
 	var candidates []AccountCandidate
+	// Mailboxes usable in principle — not health-blocked — but excluded from
+	// TODAY's set by daily capacity or their own local hours. Tomorrow's
+	// recompute is rebuilt from THIS set: rebuilding it from `candidates` made a
+	// fully-excluded day indistinguishable from owning no mailboxes at all, so
+	// an at-capacity day surfaced as paused_no_accounts.
+	var eligible []AccountCandidate
+	hoursExcluded := 0
+	var earliestAcctOpen time.Time
 	for _, acct := range accounts {
 		sentToday, err := s.taskRepo.CountCampaignEmailsSentToday(ctx, acct.ID)
 		if err != nil {
@@ -261,11 +269,6 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 
 		acctLimit := effectiveCap(acct)
 		remaining := acctLimit - sentToday
-
-		// Skip accounts that have reached their daily limit
-		if remaining <= 0 {
-			continue
-		}
 
 		// Health-gate cold sends on the SAME warmup health state used for pool
 		// selection, so a mailbox in deliverability trouble doesn't keep blasting
@@ -276,28 +279,21 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 		//     the warmup and cold schedulers can't drift; the wider min-gap still applies
 		// This gate runs FIRST, before any rotation/ESP logic, so a degraded
 		// mailbox is always dropped regardless of weighting.
+		healthBlocked := false
 		if state, blockedUntil, herr := s.warmupRepo.GetHealthState(ctx, acct.ID); herr == nil {
 			switch state {
 			case models.WarmupHealthQuarantined, models.WarmupHealthBlocked:
 				if blockedUntil == nil || blockedUntil.After(time.Now()) {
-					continue
+					healthBlocked = true
 				}
 			case models.WarmupHealthWatch, models.WarmupHealthThrottled:
 				remaining = int(float64(remaining) * adjustmentFor(state).volumeMultiplier)
-				if remaining <= 0 {
-					continue
-				}
 			}
 		}
-
-		// If the account has its own timezone, check it is within business hours
-		if acct.Timezone != "" && acct.Timezone != campaign.Timezone {
-			acctTZ := loadLocation(acct.Timezone)
-			acctLocal := candidateTime.In(acctTZ)
-			acctHour := acctLocal.Hour()
-			if acctHour < 8 || acctHour >= 20 {
-				continue // outside account's business hours
-			}
+		// A health block excludes the mailbox outright — today AND tomorrow — so
+		// it never enters `eligible`.
+		if healthBlocked {
+			continue
 		}
 
 		warmupAgeDays := 0
@@ -318,7 +314,49 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 			cand.RotationPosition = meta.rotationPosition
 			cand.SenderLastSentAt = meta.lastSentAt
 		}
+		eligible = append(eligible, cand)
+
+		// Skip accounts that have reached their daily limit
+		if remaining <= 0 {
+			continue
+		}
+
+		// If the account has its own timezone, check it is within business hours
+		if acct.Timezone != "" && acct.Timezone != campaign.Timezone {
+			acctTZ := loadLocation(acct.Timezone)
+			acctLocal := candidateTime.In(acctTZ)
+			acctHour := acctLocal.Hour()
+			if acctHour < 8 || acctHour >= 20 {
+				hoursExcluded++
+				if open := nextAccountOpen(acctLocal); earliestAcctOpen.IsZero() || open.Before(earliestAcctOpen) {
+					earliestAcctOpen = open
+				}
+				continue // outside account's business hours
+			}
+		}
+
 		candidates = append(candidates, cand)
+	}
+
+	// Every mailbox that still has capacity sits outside its OWN 8am-8pm local
+	// window at the campaign's slot. That is a timing condition, not a missing-
+	// mailbox one, and the two windows can be permanently disjoint: a
+	// Europe/London campaign (the campaigns.timezone default) opens at 08:00
+	// London, which is 07:00 for a UTC mailbox (the email_accounts.timezone
+	// default) and never clears the 8am floor. Reporting ErrNoEmailAccounts here
+	// auto-paused such a campaign as paused_no_accounts on every start attempt,
+	// with no slot it could ever recover on. Defer to the first instant that
+	// satisfies both windows instead.
+	if len(candidates) == 0 && hoursExcluded > 0 && !earliestAcctOpen.IsZero() {
+		next := nextScheduleSlot(earliestAcctOpen, windows, campaignTZ)
+		s.logCampaignDecision(ctx, campaignID, "account_hours_deferred",
+			"All mailboxes with capacity are outside their local sending hours; deferring",
+			map[string]interface{}{
+				"next_attempt":   next.Format(time.RFC3339),
+				"campaign_tz":    campaign.Timezone,
+				"mailboxes_held": hoursExcluded,
+			})
+		return next, nil, accounts[0].ID, ErrCampaignDeferred
 	}
 
 	// STEP 8.25: Apply ESP matching to the under-budget candidate set.
@@ -364,16 +402,19 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 		candidateTime = nextScheduleSlot(candidateTime, windows, campaignTZ)
 
 		var tomorrow []AccountCandidate
-		for i := range candidates {
-			acct := candidates[i].Account
+		// Rebuilt from `eligible`, not `candidates`: the mailboxes that need
+		// tomorrow are exactly the ones today excluded for capacity or local
+		// hours, and those are absent from `candidates` by construction.
+		for i := range eligible {
+			acct := eligible[i].Account
 			// ESP-strict: keep only matching mailboxes for tomorrow too.
-			if campaign.ESPMatchMode == "strict" && recipientProvider != "" && !candidates[i].ProviderMatch {
+			if campaign.ESPMatchMode == "strict" && recipientProvider != "" && !eligible[i].ProviderMatch {
 				continue
 			}
 			acctLimit := effectiveCap(acct) // same ramp clamp as STEP 8
-			c := candidates[i]
+			c := eligible[i]
 			c.RemainingToday = acctLimit
-			c.Weight = computeWeight(acctLimit, candidates[i].WarmupAgeDays)
+			c.Weight = computeWeight(acctLimit, eligible[i].WarmupAgeDays)
 			tomorrow = append(tomorrow, c)
 		}
 		// ESP-prefer: restrict tomorrow to matching mailboxes when any exist.

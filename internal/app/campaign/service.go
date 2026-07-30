@@ -29,7 +29,7 @@ type CampaignService interface {
 	StopCampaign(ctx context.Context, orgID uuid.UUID, campaignID string) *errx.Error
 
 	// Logs
-	GetLogs(ctx context.Context, userID, campaignID string, limit int, cursor *string) (*models.CampaignLogsResult, *errx.Error)
+	GetLogs(ctx context.Context, orgID, campaignID string, limit int, cursor *string) (*models.CampaignLogsResult, *errx.Error)
 
 	// Explicit sender pool (feature 1).
 	ListCampaignSenders(ctx context.Context, orgID uuid.UUID, campaignID string) ([]models.CampaignSender, *errx.Error)
